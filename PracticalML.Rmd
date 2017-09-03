@@ -1,0 +1,79 @@
+---
+title: "Excercise Activity Analysis"
+author: "Karim M. Ibrahim"
+date: "August 31, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE,message = FALSE)
+```
+
+## Overview
+
+In this document, the goal is to build a prediction model for the Weight Lifting Exercises Dataset. The Dataset contains a record of 6 particpants recording their motion when performing Unilateral Dumbbell Biceps Curl in five different positions.
+
+## Exploratory data analysis
+We start by loading the dataset and exploring its content. The official describtion of the dataset can be found on: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har.
+The dataset uses body sensors to record the motion of different body parts when performing the Bicebs curl excercise using dumbbells. The data contains different observations of participants performing the excercise. The data is labeled from "A" to "E" and each correspond to a different specification of performing the excercise.
+
+We start by loading the required libraries and load the dataset.
+```{r libr, results="hide",cache = FALSE}
+library(caret)
+library(corrplot)
+library(mlbench)
+```
+```{r cars, results="hide",cache = FALSE}
+pml_training <- read.csv("~/Downloads/pml-training.csv",na.strings=c("","NA"))
+head(pml_training)
+```
+The output is not shown because its to long. After looking into the data, we find certain columns with multible NA fields. We investigate the content of these columns to clean our data. We suspect that certain columns are corrupt, hence, we examine the number of NA values in each column. 
+```{r nas}
+NAperColumn <- apply(is.na(pml_training),2,sum)
+barplot(NAperColumn,names.arg = names(pml_training),ylab = "number of NA cells")
+```
+We can observe a pattern here. Certain columns are mostly NA values in more than 19000 ovservations out of 19622. We proceed by removing these columns from our dataset.
+```{r clean}
+falseCols <- names(NAperColumn[NAperColumn>1000])
+colNums <- which(names(pml_training) %in% falseCols)
+clean_training <- pml_training[,-colNums]
+```
+Following, we remove columns that correspond to the particpants data. These columns are not helpful in training our model and do not contain useful information for training a classifier. We also extract the features and label into seperate variables. 
+```{r cleaning again}
+clean_training <- clean_training[,-seq(1:7)]
+Features <- clean_training[,-length(clean_training)]
+Labels <- clean_training[,length(clean_training)]
+```
+
+## Pre-processing the data
+After cleaning the data from unuseful columns, we investigate the correlation between the features of the data, in case it is useful to perform a dimensionality reduction.
+```{r pca}
+Correlations <- cor(Features)
+corrplot(Correlations, method="circle",tl.col="black", tl.srt=45,tl.cex = 0.4,order = "hclust")
+correlatedColumns <- findCorrelation(Correlations,cutoff = 0.8)
+names(Features)[correlatedColumns]
+```
+As shown in the plot, certain features are showing high correlation. Hence, Principal Component Analysis (PCA) will be used as a preprocessing step. 
+
+## Training the model
+In the following we will train three models on dataset. We will use a 10-fold cross-validation to estimate the performance of our models.
+```{r trainmodel}
+train_control <- trainControl(method="cv", number=10,preProcOptions = "pca", allowParallel=TRUE)
+```
+
+The models we are investigating are: Random Forest, SVM with radial kernel and a neural network.
+```{r Models, results="hide", cache=TRUE}
+rfModel <- train(Features,Labels,method = "rf",trControl=train_control)
+svmModel <- train(Features,Labels,method = "svmRadial",trControl=train_control)
+nnModel <- train(Features,Labels,method = "nnet",trControl=train_control)
+```
+```{r prtiningModel}
+print(rfModel)
+print(svmModel)
+print(nnModel)
+```
+
+We find training accuracy is 99% for the random forest which is the best model out of the 3 proposed models. 
+
+##Conclusion
+In this analysis, we used the dumbell curl excercise dataset to train a model for predicting whether the participnt is performing the excercise correctly, and if not, what wrong position he is performing out of 4 different common wrong positions. We found that using these body sensors data, our model can reach a 99% accuracy on out of sample data. We found that a random forest model is giving very high accuracy compared to SVM and neural networks. Finally, by analysing the different features, we found that certain sensors have extra importance in the prediction process than others, which suggest that the number of senosrs used for tracking users can be reduced. 
